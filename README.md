@@ -2,10 +2,11 @@
 
 **Ships don't sail across the Sahara — or through the Greek islands.**
 
-[![before/after — Europe, 1 May 2012](landfix_before_after_reroute.png)](landfix_slider.html)
+[![before/after — Europe, 1 May 2012](landfix_before_after_reroute.png)]([landfix_slider.html](https://odysseyjason.github.io/shipmap-landfix/landfix_slider.html))
 *Fabricated over-land tracks (top) become water routes (bottom) — Biscay–Med
 traffic rounds Iberia instead of crossing France. Click for an interactive
 slider version.*
+
 
 [shipmap.org](https://www.shipmap.org) is one of the great data visualizations
 of the decade. This repo fixes its two land-crossing artifacts **without
