@@ -30,7 +30,8 @@ import numpy as np
 from PIL import Image
 
 MISSING = 0xFFFF
-WORLD = 65536  # native coordinate grid
+WORLD = 65536
+GAP_MODE = "cull"  # native coordinate grid
 
 def load_bits(path):
     a = np.asarray(Image.open(path).convert("L")) > 127
@@ -136,7 +137,7 @@ def resample_arclen(path, max_wp=12, spacing=96.0):
     seg = np.hypot(*np.diff(p, axis=0).T)
     L = seg.sum()
     if L <= 0: return []
-    n = int(np.clip(round(L / spacing), 1, max_wp))
+    n = int(np.clip(round(L / spacing), 1, max_wp)) if spacing > 1e-6 else max_wp
     cum = np.concatenate([[0.0], np.cumsum(seg)])
     targets = L * (np.arange(n) + 1) / (n + 1)
     out = []
@@ -148,14 +149,54 @@ def resample_arclen(path, max_wp=12, spacing=96.0):
         out.append((int(round(q[0])) & 0xFFFF, int(round(q[1])) & 0xFFFF))
     return out
 
+def gap_reroute(day, router):
+    """Replace maximal runs of deep-land fixes bounded by water fixes with
+    hourly points along an A* water route (arc-length spaced -> uniform
+    speed). Runs touching the day edge (no bounding water fix) are culled.
+    Operates in place on day (n_ships, 25, 2) uint16. Returns (moved, culled)."""
+    moved = culled = 0
+    vs = router.vshift
+    for s in range(day.shape[0]):
+        trk = day[s]
+        x, y = trk[:,0].astype(int), trk[:,1].astype(int)
+        present = ~((x == MISSING) & (y == MISSING))
+        bad = present & ~router.valid[np.clip(y,0,65535) >> vs, np.clip(x,0,65535) >> vs]
+        if not bad.any(): continue
+        i = 0
+        while i < 25:
+            if not bad[i]: i += 1; continue
+            j = i
+            while j < 25 and bad[j]: j += 1
+            # block [i, j) of invalid fixes; bounds i-1 and j must be valid water
+            if i-1 >= 0 and j < 25 and present[i-1] and not bad[i-1] and present[j] and not bad[j]                and abs(int(trk[j,0]) - int(trk[i-1,0])) <= WORLD // 2:
+                path = router.route(int(trk[i-1,0]), int(trk[i-1,1]),
+                                    int(trk[j,0]), int(trk[j,1]))
+                if path is not None and len(path) >= 2:
+                    pts = resample_arclen(path, max_wp=j-i, spacing=1e-9)  # exactly j-i pts
+                    if len(pts) == j - i:
+                        for k, (px_, py_) in enumerate(pts):
+                            trk[i+k,0], trk[i+k,1] = px_, py_
+                        moved += j - i
+                        i = j; continue
+            trk[i:j] = MISSING
+            culled += j - i
+            i = j
+    return moved, culled
+
 def rebake(in_path, out_dir, router, sidecar):
     raw = np.fromfile(in_path, dtype=">u2")
     if raw.size % 50:
         raise ValueError(f"{in_path}: not a multiple of 100 bytes")
-    xy = raw.reshape(-1, 2)
-    present, bad = router.cull(xy)
     n_ships = raw.size // 50
     day = raw.reshape(n_ships, 25, 2)
+    if GAP_MODE == "reroute":
+        moved, nculled = gap_reroute(day, router)
+        npresent = int((~((day[:,:,0]==MISSING)&(day[:,:,1]==MISSING))).sum())
+        present_n, bad_n = npresent, nculled
+    else:
+        xy = raw.reshape(-1, 2)
+        p, b = router.cull(xy)
+        present_n, bad_n = int(p.sum()), int(b.sum())
     entries = []
     if sidecar:
         for s in range(n_ships):
@@ -179,7 +220,7 @@ def rebake(in_path, out_dir, router, sidecar):
                 f.write(struct.pack(">HBB", s, h, len(wps)))
                 for x, y in wps:
                     f.write(struct.pack(">HH", x, y))
-    return int(present.sum()), int(bad.sum()), len(entries)
+    return present_n, bad_n, len(entries)
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
@@ -187,10 +228,14 @@ if __name__ == "__main__":
     ap.add_argument("--out", dest="outdir", required=True)
     ap.add_argument("--valid-mask", default="valid_water_4096.png")
     ap.add_argument("--land-mask", default="land_2048.png")
+    ap.add_argument("--gap-mode", choices=["cull","reroute"], default="cull",
+                    help="deep-land fixes: cull (delete) or reroute (move onto an "
+                         "A* water path at the same hourly cadence)")
     ap.add_argument("--routes-sidecar", action="store_true",
                     help="also emit sparse {day}.routes.bin corner-fix sidecars")
     a = ap.parse_args()
     os.makedirs(a.outdir, exist_ok=True)
+    globals()["GAP_MODE"] = a.gap_mode
     router = Router(a.valid_mask, a.land_mask)
     tf = tc = tr = files = 0
     for name in sorted(os.listdir(a.indir)):

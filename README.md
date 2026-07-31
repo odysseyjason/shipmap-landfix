@@ -2,8 +2,10 @@
 
 **Ships don't sail across the Sahara — or through the Greek islands.**
 
-[![before/after — Europe, 1 May 2012](landfix_before_after.png)](landfix_slider.html)
-*Click for an interactive slider version.*
+[![before/after — Europe, 1 May 2012](landfix_before_after_reroute.png)](landfix_slider.html)
+*Fabricated over-land tracks (top) become water routes (bottom) — Biscay–Med
+traffic rounds Iberia instead of crossing France. Click for an interactive
+slider version.*
 
 [shipmap.org](https://www.shipmap.org) is one of the great data visualizations
 of the decade. This repo fixes its two land-crossing artifacts **without
@@ -50,6 +52,26 @@ Results, day 121 (1 May 2012):
 
 Both implementations — `landfix.js` (browser) and `rebake_days.py` (offline)
 — produce **byte-identical output** on the same input, verified by md5.
+
+### Two philosophies for fabricated fixes: `--gap-mode cull | reroute`
+
+- **`cull`** (default): delete fabricated fixes. Purist — every fix that
+  remains is one the satellites actually reported. Affected ships vanish for
+  the duration of the coverage gap.
+- **`reroute`**: move fabricated fixes onto an A* **water** route between the
+  bounding genuine fixes, at the same hourly cadence and arc-length spacing
+  (uniform speed). This replaces the upstream's land-blind straight-line
+  interpolation with the same idea done honestly — water-constrained — and it
+  is expressible entirely inside the existing file format: **still zero client
+  changes.** The hero image above uses this mode; traffic goes *around*
+  Iberia and Anatolia instead of disappearing.
+
+Current scope note: `reroute` operates within each day file, so it repairs
+same-day overland excursions (~5,400 fixes on day 121); fabricated runs that
+span multiple days have no water endpoints inside a single file and are
+culled. A cross-day voyage-reconstruction pass (stitching gap endpoints
+across the year and redistributing hours along the full water route) is a
+straightforward extension of the same machinery — contact us if you want it.
 
 ## Tier 1.5 — sparse route sidecars (corner-cutting)
 
@@ -115,7 +137,8 @@ matters only when drawing ordinary chords.
 | `valid_water_4096.png` | validity mask (white = valid water), ~10 km cells, 177 KB |
 | `land_2048.png` | routing mask (white = land), ~20 km cells, 46 KB |
 | `make_masks.py` | regenerate/customize masks from Natural Earth (public domain) |
-| `landfix_before_after.png` | Tier 1 evidence (Europe, day 121) |
+| `landfix_before_after.png` | Tier 1 evidence, cull mode (Europe, day 121) |
+| `landfix_before_after_reroute.png` | Tier 1 evidence, reroute mode (hero image) |
 | `corner_before_after.png` | Tier 1.5 evidence (Aegean, day 121) |
 | `landfix_slider.html` | self-contained interactive before/after slider |
 
