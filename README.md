@@ -4,6 +4,8 @@ Removes fabricated over-land ship tracks from the [shipmap.org](https://www.ship
 2012 merchant-fleet visualization — the "ships" that sail in a straight line
 across Africa, Arabia, or Central America.
 
+![before/after comparison](landfix_before_after.png)
+
 **Cause.** Coverage gaps in the 2012 satellite AIS data were filled upstream by
 straight-line interpolation between distant fixes, at hourly steps. A ship that
 went dark in the Red Sea and reappeared off West Africa acquires days of hourly
